@@ -28,6 +28,14 @@ A comprehensive ROS 2 package for simulating a differential drive robot in Gazeb
 - Compatible with Nav2 navigation stack
 - RViz2 visualization ready
 
+✅ **Nav2 Navigation Stack**
+- Full AMCL localization (particle filter)
+- Dynamic path planning with obstacle avoidance
+- Behavior tree-based navigation
+- Pre-configured parameters for differential drive robots
+- Integrated map handling with occupancy grid
+- Recovery behaviors for stuck situations
+
 ✅ **Visualization**
 - RViz2 integration with pre-configured display
 - Real-time TF tree visualization
@@ -43,17 +51,23 @@ diff_drive_sim/
 │   ├── diff_drive_robot.xacro       # Xacro macros and parameters
 │   └── diff_drive_robot.sdf         # Generated SDF file
 ├── config/
-│   └── bridge_config.yaml           # Topic bridge configuration
+│   ├── bridge_config.yaml           # ROS-Gazebo topic bridge configuration
+│   └── nav_params.yaml              # Nav2 parameters (AMCL, planners, controllers)
 ├── launch/
-│   └── sim.launch.py                # Main simulation launcher
+│   ├── sim.launch.py                # Main simulation launcher
+│   └── nav.launch.py                # Navigation stack launcher (localization + navigation)
+├── maps/
+│   ├── map.yaml                     # Map metadata (origin, resolution, image)
+│   └── map.pgm                      # Map occupancy grid image
 ├── world/
 │   ├── default.sdf                  # Default simulation world
 │   └── my_world.sdf                 # Alternative world
 ├── rviz/
-│   └── rviz.config                  # RViz configuration
+│   └── rviz.config                  # RViz visualization configuration
 ├── CMakeLists.txt
 ├── package.xml
-└── README.md                        # This file
+├── README.md                        # This file
+└── CHANGE_LOG.md                    # Version history
 ```
 
 ## Quick Start
@@ -64,7 +78,7 @@ diff_drive_sim/
 # Install ROS 2 Humble
 sudo apt-get install ros-humble-desktop
 
-# Install required packages
+# Install core simulation packages
 sudo apt install ros-humble-gazebo-ros-pkgs \
                  ros-humble-gazebo-plugins \
                  ros-humble-robot-state-publisher \
@@ -74,8 +88,12 @@ sudo apt install ros-humble-gazebo-ros-pkgs \
                  ros-humble-teleop-twist-joy \
                  ros-humble-joy
 
-# Install Gazebo Fortress (if not already installed)
+# Install Gazebo Fortress
 sudo apt install ignition-fortress ros-humble-ros-gz-sim ros-humble-ros-gz-bridge
+
+# Install Nav2 stack (for autonomous navigation)
+sudo apt install ros-humble-nav2-* \
+                 ros-humble-slam-toolbox
 ```
 
 ### Build the Package
@@ -227,6 +245,90 @@ ros2 run tf2_tools view_frames.py
 ros2 run tf2_ros tf2_echo base_link drivewhl_l_link
 ```
 
+### 4. Navigation Stack (Autonomous Navigation)
+
+The package includes full Nav2 integration with pre-configured parameters optimized for differential drive robots.
+
+#### **Start Navigation**
+
+```bash
+# Terminal 1: Start simulation
+ros2 launch diff_drive_sim sim.launch.py
+
+# Terminal 2: Start navigation stack (AMCL + Path Planning)
+ros2 launch diff_drive_sim nav.launch.py
+```
+
+#### **Navigation Launch Options**
+
+```bash
+# Custom map file
+ros2 launch diff_drive_sim nav.launch.py map:=/path/to/your/map.yaml
+
+# Custom navigation parameters
+ros2 launch diff_drive_sim nav.launch.py nav_params_file:=/path/to/nav_params.yaml
+
+# Disable autostart (manual server startup)
+ros2 launch diff_drive_sim nav.launch.py autostart:=false
+```
+
+#### **Using Navigation in RViz**
+
+1. Open RViz2 and load `rviz.config` or create a new config
+2. Add these displays:
+   - **Map** - Shows the occupancy grid
+   - **Pose Estimate** - Use "2D Pose Estimate" tool to set initial pose
+   - **Path** - Shows planned path from planner
+   - **Particle Cloud** - Shows AMCL particle filter
+   - **LaserScan** - Shows robot's LiDAR data
+3. Use **2D Goal Pose** tool to set navigation goals
+4. Robot will autonomously navigate while avoiding obstacles
+
+#### **Navigation Parameters**
+
+Key AMCL parameters in `config/nav_params.yaml`:
+- `max_particles: 2000` - Number of particles in filter
+- `laser_model_type: "likelihood_field"` - Laser matching model
+- `robot_model_type: "DifferentialMotionModel"` - Motion model for diff drive
+- `update_min_d: 0.25` - Minimum linear distance between updates (m)
+- `update_min_a: 0.2` - Minimum angular distance between updates (rad)
+- `laser_likelihood_max_dist: 2.0` - Max distance for beam correspondence (m)
+
+#### **Manual Robot Positioning**
+
+If robot gets lost:
+
+```bash
+# In RViz2: Use "2D Pose Estimate" tool
+# Or via CLI:
+ros2 topic pub -1 /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
+  "{header: {frame_id: 'map'}, 
+    pose: {pose: {position: {x: 0.0, y: 0.0}, 
+    orientation: {w: 1.0}}, 
+    covariance: [0.25, 0.0, 0.0, 0.0, 0.0, 0.0, 
+                 0.0, 0.25, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                 0.0, 0.0, 0.0, 0.0, 0.0, 0.06853891458577149]}}"
+```
+
+#### **Map Configuration**
+
+Map files are located in `maps/`:
+- `map.yaml` - Map metadata (YAML format)
+- `map.pgm` - Occupancy grid image (grayscale PNG/PGM)
+
+Map metadata format:
+```yaml
+image: map.pgm           # Path to occupancy grid image
+resolution: 0.05         # Resolution in m/pixel (how many meters each pixel represents)
+origin: [0.0, 0.0, 0.0]  # Origin position (x, y, theta)
+negate: 0                # Negate colors (0 or 1)
+occupied_thresh: 0.65    # Occupancy threshold (0-1)
+free_thresh: 0.25        # Free space threshold (0-1)
+```
+
 ## Robot Specifications
 
 ### Physical Dimensions
@@ -278,12 +380,30 @@ ros2 run tf2_ros tf2_echo base_link drivewhl_l_link
 ### sim.launch.py
 Main simulation launcher that starts:
 - Gazebo server (physics simulation)
-- Gazebo client (GUI, optional)
+- Gazebo client (GUI, optional via `headless` flag)
 - Robot spawner
-- Robot state publisher
-- Joint state publisher
-- ROS-Gazebo bridge
+- Robot state publisher (with xacro processing)
+- Joint state publisher for TF tree
+- ROS-Gazebo bridge for topic bridging
 - RViz2 (optional)
+
+**Available arguments:**
+- `use_sim_time:=true/false` - Use Gazebo simulation time
+- `headless:=true/false` - Disable/enable Gazebo GUI
+- `verbose:=true/false` - Enable verbose logging
+
+### nav.launch.py
+Navigation stack launcher that starts:
+- **Localization**: AMCL (Adaptive Monte Carlo Localization) for robot pose estimation
+- **Navigation**: Nav2 with path planning, costmap, and behavior tree
+- Pre-loads map and navigation parameters
+- Integrates with Gazebo simulation via sim_time
+
+**Available arguments:**
+- `map:=/path/to/map.yaml` - Custom map file (default: package maps/map.yaml)
+- `nav_params_file:=/path/to/nav_params.yaml` - Custom nav parameters
+- `use_sim_time:=true/false` - Use simulation time
+- `autostart:=true/false` - Automatically start navigation servers
 
 ## Configuration Files
 
@@ -402,18 +522,23 @@ ros2 launch my_robot_driver driver.launch.py
 
 | File | Purpose |
 |------|---------|
-| `sim.launch.py` | Main entry point - starts everything |
-| `diff_drive_robot.urdf` | Robot model (URDF format) |
+| `sim.launch.py` | Main simulation launcher (Gazebo + robot spawn + bridge) |
+| `nav.launch.py` | Navigation stack launcher (AMCL + Nav2) |
+| `diff_drive_robot.urdf` | Robot model (URDF format with xacro) |
 | `diff_drive_robot.xacro` | Xacro macros and parameterized components |
-| `diff_drive_robot.sdf` | Robot model (SDF format, generated) |
-| `default.sdf` | Gazebo world definition |
-| `my_world.sdf` | Alternative world definition |
+| `diff_drive_robot.sdf` | Robot model (SDF format, auto-generated) |
+| `default.sdf` | Default Gazebo world definition |
+| `my_world.sdf` | Alternative Gazebo world |
 | `bridge_config.yaml` | ROS 2 ↔ Gazebo topic bridge config |
-| `rviz.config` | RViz visualization setup |
+| `nav_params.yaml` | Nav2 parameters (AMCL, planners, controllers) |
+| `map.yaml` | Map metadata (origin, resolution, image reference) |
+| `map.pgm` | Occupancy grid image |
+| `rviz.config` | RViz2 visualization configuration |
 
 ## Documentation
 
 - **QUICKSTART.md** - Get started in 5 minutes
+- **CHANGE_LOG.md** - Version history and updates
 
 ## Common Workflows
 
@@ -459,6 +584,38 @@ ros2 bag record /cmd_vel /robot/odom /robot/imu /scan
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 
 # Terminal 2: Stop recording (Ctrl+C)
+```
+
+### Workflow 5: Autonomous Navigation with AMCL
+```bash
+# Terminal 1: Start simulation
+ros2 launch diff_drive_sim sim.launch.py
+
+# Terminal 2: Start navigation stack (AMCL + path planning)
+ros2 launch diff_drive_sim nav.launch.py
+
+# Terminal 3: Open RViz for visualization and goal setting
+rviz2
+
+# In RViz:
+# 1. Set initial pose with "2D Pose Estimate" tool
+# 2. Set navigation goal with "2D Goal Pose" tool
+# 3. Robot navigates autonomously to goal while avoiding obstacles
+```
+
+### Workflow 6: Full Integration Test
+```bash
+# Terminal 1: Start simulation
+ros2 launch diff_drive_sim sim.launch.py headless:=true
+
+# Terminal 2: Start navigation
+ros2 launch diff_drive_sim nav.launch.py
+
+# Terminal 3: Open RViz with full visualization
+rviz2 -d $(ros2 pkg prefix diff_drive_sim)/share/diff_drive_sim/rviz/rviz.config
+
+# Terminal 4: Manual teleoperation (if needed to help robot localize)
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
 ## Contributing
