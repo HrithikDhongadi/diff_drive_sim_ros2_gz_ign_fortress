@@ -9,3 +9,4 @@
 |23-11-2025| Established a default world in `default.sdf` with physics settings and a ground plane model. |
 |23-11-2025| Introduced a custom world in `my_world.sdf` featuring additional models and environmental settings for testing. |
 |23-11-2025| Added documentation for robot model and world files. |
+|24-11-2025| Integrated navigation stack with configuration files for differential drive robot. |

@@ -35,6 +35,11 @@ install(DIRECTORY world/
 install(DIRECTORY rviz/
   DESTINATION share/${PROJECT_NAME}/rviz
   OPTIONAL)
+
+# Install maps
+install(DIRECTORY maps/
+  DESTINATION share/${PROJECT_NAME}/maps
+  OPTIONAL)
   
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

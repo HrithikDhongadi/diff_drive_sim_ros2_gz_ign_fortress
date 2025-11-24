@@ -22,11 +22,12 @@ def generate_launch_description():
     
     # Get package directory
     pkg_share = get_package_share_directory('diff_drive_sim')
+    nav2_pkg_share = get_package_share_directory('nav2_bringup')
     
     # Define paths
     # urdf_file = os.path.join(pkg_share, 'urdf', 'diff_drive_robot.urdf')
     sdf_file = os.path.join(pkg_share, 'urdf', 'diff_drive_robot.sdf')
-    world_file = os.path.join(pkg_share, 'world', 'default.sdf')
+    world_file = os.path.join(pkg_share, 'world', 'my_world.sdf')
     bridge_config = os.path.join(pkg_share, 'config', 'bridge_config.yaml')
 
     # Read URDF file
@@ -90,8 +91,8 @@ def generate_launch_description():
         output='screen'
     )
     
-    # RViz node
-    rviz_config = os.path.join(pkg_share, 'rviz', 'display.rviz')
+    # RViz node with a .rviz file launch of nav2
+    rviz_config = os.path.join(nav2_pkg_share, 'rviz', 'nav2_default_view.rviz')
     rviz_node = Node(
         package='rviz2',
         executable='rviz2',
@@ -117,7 +118,6 @@ def generate_launch_description():
         declare_headless,
         declare_verbose,
         robot_state_publisher_node,
-        # joint_state_publisher,
         gazebo_server,
         gazebo_client,
         spawn_entity,
