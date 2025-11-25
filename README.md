@@ -52,16 +52,20 @@ diff_drive_sim/
 │   └── diff_drive_robot.sdf         # Generated SDF file
 ├── config/
 │   ├── bridge_config.yaml           # ROS-Gazebo topic bridge configuration
-│   └── nav_params.yaml              # Nav2 parameters (AMCL, planners, controllers)
+│   ├── nav_params.yaml              # Nav2 parameters (AMCL, planners, controllers)
+│   └── mapper_params_online_async.yaml  # SLAM Toolbox online async mapper parameters
 ├── launch/
 │   ├── sim.launch.py                # Main simulation launcher
 │   └── nav.launch.py                # Navigation stack launcher (localization + navigation)
 ├── maps/
-│   ├── map.yaml                     # Map metadata (origin, resolution, image)
-│   └── map.pgm                      # Map occupancy grid image
+│   ├── map.yaml & map.pgm           # Default map for navigation testing
+│   ├── my_map2.yaml & my_map2.pgm   # Alternative test map
+│   ├── closed_map.yaml & closed_map.pgm   # Map from closed_world (v1)
+│   └── closed_map_v2.yaml, .pgm, .posegraph # Improved closed_world map (v2)
 ├── world/
 │   ├── default.sdf                  # Default simulation world
-│   └── my_world.sdf                 # Alternative world
+│   ├── my_world.sdf                 # World with basic obstacles
+│   └── closed_world.sdf             # Comprehensive enclosed environment with many features
 ├── rviz/
 │   └── rviz.config                  # RViz visualization configuration
 ├── CMakeLists.txt
@@ -329,6 +333,162 @@ occupied_thresh: 0.65    # Occupancy threshold (0-1)
 free_thresh: 0.25        # Free space threshold (0-1)
 ```
 
+### 5. SLAM Map Creation (Simultaneous Localization And Mapping)
+
+For creating new maps, use SLAM Toolbox for real-time map generation as the robot explores the environment.
+
+#### **Start SLAM Map Creation**
+
+```bash
+# Terminal 1: Start simulation
+ros2 launch diff_drive_sim sim.launch.py
+
+# Terminal 2: Start SLAM for map creation
+ros2 launch diff_drive_sim slam.launch.py
+
+# Terminal 3: Open RViz for visualization
+rviz2
+```
+
+#### **SLAM Visualization in RViz**
+
+1. Add these displays in RViz:
+   - **Map** - Shows the created occupancy grid
+   - **LaserScan** - Shows robot's LiDAR scans
+   - **Particle Cloud** - Shows localization particles (if using AMCL)
+   - **TF** - Shows robot's transform tree
+
+2. Control the robot using teleop to explore and map the environment:
+```bash
+# Terminal 4: Start teleoperation
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+```
+
+3. As the robot moves, SLAM will:
+   - Build an occupancy grid map
+   - Update the map in real-time
+   - Track the robot's pose
+
+#### **Save the Generated Map**
+
+After exploring the environment, save the map using slam_toolbox:
+
+```bash
+# Save map with custom name
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/my_map'}}"
+
+# This creates:
+# - my_map.yaml (metadata file)
+# - my_map.pgm (occupancy grid image)
+```
+
+#### **Serialize Map for Future Mapping Sessions**
+
+To preserve the complete SLAM state (pose graph, constraints, etc.) for future refinement or continuation:
+
+```bash
+# Serialize the pose graph and constraints for future sessions
+ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
+  "{filename: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/my_map'}"
+
+# This creates:
+# - my_map.posegraph (complete SLAM state including pose graph and loop closures)
+
+# Example with closed_world map v2:
+ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
+  "{filename: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/closed_map_v2'}"
+```
+
+**Why Serialize?**
+- **Continuity**: Resume mapping sessions without losing mapping data
+- **Optimization**: Apply additional optimization passes to improve map quality
+- **Loop Closures**: Preserve detected loop closure constraints
+- **Refinement**: Adjust SLAM parameters and re-optimize on existing data
+
+#### **Use Saved Map for Navigation**
+
+Once map is saved, use it with Nav2:
+
+```bash
+# Launch navigation with saved map
+ros2 launch diff_drive_sim nav.launch.py map:=/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/my_map.yaml
+```
+
+#### **SLAM Parameters**
+
+SLAM Toolbox uses online async mode with parameters defined in `config/mapper_params_online_async.yaml`:
+
+**Key Configuration Parameters:**
+- `resolution: 0.05` - Map resolution in meters per pixel (0.05m = 5cm per grid cell)
+- `max_laser_range: 15.0` - Maximum LiDAR range to consider (in meters)
+- `minimum_time_interval: 0.5` - Minimum seconds between map updates
+- `transform_publish_period: 0.02` - TF publishing rate (50Hz)
+- `mode: mapping` - Operation mode ('mapping' for SLAM, 'localization' for localization-only)
+- `solver_type: "ceres"` - Backend solver for optimization
+- `ceres_multi_thread: true` - Enable multi-threading for faster optimization
+- `strategy: "1"` - Correlation search strategy
+- `correlation_search_space_dimension: 0.5` - Search space in meters
+- `correlation_search_space_smear: 0.03` - Gaussian smear factor
+
+**Advanced Tuning:**
+```bash
+# Use custom SLAM configuration
+ros2 launch diff_drive_sim slam.launch.py \
+  slam_config_file:=/path/to/custom_mapper_params.yaml
+```
+
+**Default Configuration File:** `config/mapper_params_online_async.yaml`
+
+For detailed SLAM parameter documentation, see the [slam_toolbox GitHub repository](https://github.com/StanleyInnovation/slam_toolbox).
+
+## World Environments
+
+The package includes multiple Gazebo worlds designed for different testing scenarios:
+
+### default.sdf
+**Purpose**: Simple baseline world
+- Empty flat ground plane (100m × 100m)
+- Minimal obstacles
+- Good for basic simulation testing
+- Launch: `ros2 launch diff_drive_sim sim.launch.py world:=default.sdf`
+
+### my_world.sdf
+**Purpose**: Basic environment with obstacles
+- Contains a unit box and unit sphere
+- Simple obstacle placement
+- Good for initial SLAM testing
+- Launch: `ros2 launch diff_drive_sim sim.launch.py world:=my_world.sdf`
+
+### closed_world.sdf ⭐ (Recommended for SLAM/Navigation)
+**Purpose**: Comprehensive enclosed environment for advanced testing
+**Features:**
+- **Enclosed Room**: 20m × 20m bounded by walls (2m high)
+- **Central Column**: Cylindrical obstacle in the center
+- **Corner Obstacles**: 4 rotated box obstacles in corners (NW, NE, SW, SE)
+- **Wall Obstacles**: Offset obstacles near north and south walls
+- **Passage Challenge**: Narrow passage (2m wide) for path planning testing
+- **Cylindrical Obstacle**: On east side
+- **Spherical Obstacle**: On west side for visual variety
+- **Landmarks**: 3 high-visibility colored blocks for LiDAR mapping reference
+- **Optimized Physics**: 1ms timestep, 1000Hz update rate for accurate simulation
+
+**Best For:**
+- SLAM map creation and testing
+- Path planning algorithm evaluation
+- Navigation stack testing with complex obstacles
+- Multi-robot scenario setup
+
+**Launch with custom world:**
+```bash
+# Using default world (empty)
+ros2 launch diff_drive_sim sim.launch.py
+
+# Using closed_world (recommended for SLAM/navigation)
+ros2 launch diff_drive_sim sim.launch.py world_file:=$(ros2 pkg prefix diff_drive_sim)/share/diff_drive_sim/world/closed_world.sdf
+```
+
+**Camera View**: The closed world is optimized with a good initial camera view for visualization
+
 ## Robot Specifications
 
 ### Physical Dimensions
@@ -367,12 +527,25 @@ free_thresh: 0.25        # Free space threshold (0-1)
 /joint_states                   (sensor_msgs/JointState)  - Joint positions/velocities
 /tf                             (tf2_msgs/TFMessage)      - Transform frames
 /clock                          (rosgraph_msgs/Clock)     - Simulation clock
+/map                            (nav_msgs/OccupancyGrid)  - Occupancy grid map (Nav2/SLAM)
+/map_metadata                   (nav_msgs/MapMetaData)    - Map metadata
 ```
 
 ### Subscribed Topics
 ```
 /cmd_vel                        (geometry_msgs/Twist)     - Velocity commands
 /controller_manager/*           (controller_manager msgs) - Controller commands
+/initialpose                    (geometry_msgs/PoseWithCovarianceStamped) - Initial pose (AMCL)
+/goal_pose                      (geometry_msgs/PoseStamped)         - Navigation goal
+```
+
+### SLAM Topics (when slam.launch.py active)
+```
+/scan                           (sensor_msgs/LaserScan)   - Input LiDAR scans
+/tf                             (tf2_msgs/TFMessage)      - SLAM transformation graph
+/map                            (nav_msgs/OccupancyGrid)  - Generated map
+/pose                           (geometry_msgs/PoseStamped) - Estimated robot pose
+/slam_toolbox/graph_visualization (visualization_msgs/MarkerArray) - Graph visualization
 ```
 
 ## Launch Configuration
@@ -404,6 +577,24 @@ Navigation stack launcher that starts:
 - `nav_params_file:=/path/to/nav_params.yaml` - Custom nav parameters
 - `use_sim_time:=true/false` - Use simulation time
 - `autostart:=true/false` - Automatically start navigation servers
+
+### slam.launch.py
+SLAM (Simultaneous Localization And Mapping) launcher for real-time map creation:
+- Launches slam_toolbox with online async mode
+- Creates occupancy grid map as robot explores
+- Publishes map and pose estimates in real-time
+- Integrates with Gazebo simulation via sim_time
+
+**Available arguments:**
+- `use_sim_time:=true/false` - Use simulation time (default: true)
+- `slam_config_file:=/path/to/config.yaml` - Custom SLAM parameters
+
+**Usage workflow:**
+1. Start simulation: `ros2 launch diff_drive_sim sim.launch.py`
+2. Start SLAM: `ros2 launch diff_drive_sim slam.launch.py`
+3. Teleop robot to explore: `ros2 run teleop_twist_keyboard teleop_twist_keyboard`
+4. Save map: `ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap "{name: {data: '/path/to/maps/my_map'}}"`
+5. Use saved map with nav: `ros2 launch diff_drive_sim nav.launch.py map:=/path/to/maps/my_map.yaml`
 
 ## Configuration Files
 
@@ -518,21 +709,56 @@ ros2 launch my_robot_driver driver.launch.py
 | Headless + Full sensors | 200+ | ~40% |
 | Headless + Minimal sensors | 300+ | ~25% |
 
+## Available Maps
+
+The package includes pre-created maps for quick navigation testing:
+
+### Default Map (`map.yaml` / `map.pgm`)
+- **Use Case**: Initial testing with a simple known environment
+- **Size**: [See map resolution in yaml]
+- **Created**: Initial package release
+- **Launch**: `ros2 launch diff_drive_sim nav.launch.py map:=maps/map.yaml`
+
+### My Map 2 (`my_map2.yaml` / `my_map2.pgm`)
+- **Use Case**: Alternative environment for SLAM/navigation testing
+- **Created**: User-generated test map
+- **Launch**: `ros2 launch diff_drive_sim nav.launch.py map:=maps/my_map2.yaml`
+
+### Closed World Maps (`closed_map.yaml` + `closed_map_v2.yaml`)
+- **Use Case**: Maps created from `closed_world.sdf` environment
+- **closed_map.yaml / closed_map.pgm**: Initial version of closed world map
+- **closed_map_v2.yaml / closed_map_v2.pgm / closed_map_v2.posegraph**: Refined version with improved feature extraction
+- **Best For**: Testing Nav2 navigation in complex enclosed environments with landmarks
+- **Launch**: 
+  ```bash
+  # Using v2 (recommended)
+  ros2 launch diff_drive_sim nav.launch.py map:=maps/closed_map_v2.yaml
+  ```
+
+### Creating Custom Maps
+
+See Workflow 7 and 8 in the Common Workflows section for instructions on creating maps using SLAM.
+
 ## File Reference
 
 | File | Purpose |
 |------|---------|
 | `sim.launch.py` | Main simulation launcher (Gazebo + robot spawn + bridge) |
 | `nav.launch.py` | Navigation stack launcher (AMCL + Nav2) |
+| `slam.launch.py` | SLAM launcher for real-time map creation (slam_toolbox) |
 | `diff_drive_robot.urdf` | Robot model (URDF format with xacro) |
 | `diff_drive_robot.xacro` | Xacro macros and parameterized components |
 | `diff_drive_robot.sdf` | Robot model (SDF format, auto-generated) |
 | `default.sdf` | Default Gazebo world definition |
-| `my_world.sdf` | Alternative Gazebo world |
-| `bridge_config.yaml` | ROS 2 ↔ Gazebo topic bridge config |
+| `my_world.sdf` | Gazebo world with basic obstacles |
+| `closed_world.sdf` | Comprehensive enclosed environment for SLAM/navigation |
+| `bridge_config.yaml` | ROS 2 ↔ Gazebo topic bridge configuration |
 | `nav_params.yaml` | Nav2 parameters (AMCL, planners, controllers) |
-| `map.yaml` | Map metadata (origin, resolution, image reference) |
-| `map.pgm` | Occupancy grid image |
+| `mapper_params_online_async.yaml` | SLAM Toolbox online async mapper parameters |
+| `map.yaml` / `map.pgm` | Default map metadata and occupancy grid image |
+| `my_map2.yaml` / `my_map2.pgm` | Alternative test map for navigation |
+| `closed_map.yaml` / `closed_map.pgm` | Map created from closed_world.sdf environment (v1) |
+| `closed_map_v2.yaml` / `closed_map_v2.pgm` | Improved map from closed_world.sdf with posegraph data |
 | `rviz.config` | RViz2 visualization configuration |
 
 ## Documentation
@@ -618,6 +844,97 @@ rviz2 -d $(ros2 pkg prefix diff_drive_sim)/share/diff_drive_sim/rviz/rviz.config
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
 
+### Workflow 7: SLAM Map Creation
+```bash
+# Terminal 1: Start simulation
+ros2 launch diff_drive_sim sim.launch.py
+
+# Terminal 2: Start SLAM for real-time map creation
+ros2 launch diff_drive_sim slam.launch.py
+
+# Terminal 3: Open RViz for visualization
+rviz2
+
+# Terminal 4: Control robot to explore and map the environment
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+# After exploring, save the map:
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap \
+  "{name: {data: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/my_map'}}"
+
+# Terminal 5: Use the saved map for navigation
+ros2 launch diff_drive_sim nav.launch.py \
+  map:=/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/my_map.yaml
+```
+
+### Workflow 8: Complete SLAM to Navigation Pipeline
+```bash
+# Terminal 1: Start simulation
+ros2 launch diff_drive_sim sim.launch.py headless:=true
+
+# Terminal 2: Start SLAM
+ros2 launch diff_drive_sim slam.launch.py
+
+# Terminal 3: Open RViz
+rviz2
+
+# Terminal 4: Explore environment with teleoperation
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+# (Drive around for 2-3 minutes to create map)
+
+# Terminal 5: Save map
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap \
+  "{name: {data: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/created_map'}}"
+
+# Terminal 2: Stop SLAM (Ctrl+C)
+
+# Terminal 2: Start navigation with created map
+ros2 launch diff_drive_sim nav.launch.py \
+  map:=/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/created_map.yaml
+
+# In RViz: Set initial pose and send navigation goals
+# Robot will now navigate autonomously in the created map
+```
+
+### Workflow 9: SLAM with Pose Graph Serialization (Advanced Mapping)
+```bash
+# Terminal 1: Start simulation with closed_world
+ros2 launch diff_drive_sim sim.launch.py \
+  world_file:=$(ros2 pkg prefix diff_drive_sim)/share/diff_drive_sim/world/closed_world.sdf
+
+# Terminal 2: Start SLAM
+ros2 launch diff_drive_sim slam.launch.py
+
+# Terminal 3: Open RViz
+rviz2
+
+# Terminal 4: Explore environment thoroughly for loop closures
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
+# (Drive around for 3-5 minutes, revisit areas for loop detection)
+
+# Terminal 5: After thorough exploration, serialize the pose graph
+ros2 service call /slam_toolbox/serialize_map slam_toolbox/srv/SerializePoseGraph \
+  "{filename: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/closed_map_v2'}"
+
+# Terminal 5: Save the occupancy grid map
+ros2 service call /slam_toolbox/save_map slam_toolbox/srv/SaveMap \
+  "{name: {data: '/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/closed_map_v2'}}"
+
+# This creates:
+# - closed_map_v2.yaml (map metadata)
+# - closed_map_v2.pgm (occupancy grid)
+# - closed_map_v2.posegraph (complete SLAM state with loop closures)
+
+# Terminal 2: Stop SLAM (Ctrl+C)
+
+# Terminal 2: Use saved map for navigation with optimal pose graph
+ros2 launch diff_drive_sim nav.launch.py \
+  map:=/home/hrithik/work/agv_ws/src/diff_drive_sim/maps/closed_map_v2.yaml
+
+# Optional: Resume mapping session later
+# Load the serialized pose graph: See slam_toolbox documentation for load_map service
+```
+
 ## Contributing
 
 To improve this package:
@@ -630,6 +947,8 @@ To improve this package:
 
 - [ROS 2 Documentation](https://docs.ros.org/)
 - [Gazebo Fortress Documentation](https://gazebosim.org/)
+- [Nav2 Documentation](https://nav2.org/)
+- [SLAM Toolbox](https://github.com/StanleyInnovation/slam_toolbox)
 - [ROS 2 Control](https://github.com/ros-controls/ros2_control)
 - [TurtleBot 3](https://emanual.robotis.com/docs/en/platform/turtlebot3/)
 - [DiffDrive Controller](https://github.com/ros-controls/ros2_controllers)
@@ -644,6 +963,7 @@ For issues, questions, or contributions:
 1. Check existing documentation
 2. Review the troubleshooting section
 3. Check ROS 2 and Gazebo forums
+4. Check SLAM Toolbox documentation
 
 ## Author
 - Developed by Hrithik Dhongadi

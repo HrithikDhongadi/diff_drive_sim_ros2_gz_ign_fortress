@@ -22,7 +22,7 @@ def generate_launch_description():
     nav2_pkg_share = get_package_share_directory('nav2_bringup')
     
     # Define paths
-    map_file = os.path.join(pkg_share, 'maps', 'map.yaml')
+    map_file = os.path.join(pkg_share, 'maps', 'closed_map_v2.yaml')
     nav_params_file = os.path.join(pkg_share, 'config', 'nav_params.yaml')
     
     # Declare launch arguments

@@ -27,7 +27,7 @@ def generate_launch_description():
     # Define paths
     # urdf_file = os.path.join(pkg_share, 'urdf', 'diff_drive_robot.urdf')
     sdf_file = os.path.join(pkg_share, 'urdf', 'diff_drive_robot.sdf')
-    world_file = os.path.join(pkg_share, 'world', 'my_world.sdf')
+    world_file = os.path.join(pkg_share, 'world', 'closed_world.sdf')
     bridge_config = os.path.join(pkg_share, 'config', 'bridge_config.yaml')
 
     # Read URDF file

@@ -75,6 +75,16 @@
             <length>0.04</length>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>    <!-- along one tangent direction -->
+              <mu2>1.0</mu2>  <!-- along the other -->
+              <slip1>0.0</slip1>
+              <slip2>0.0</slip2>
+            </ode>
+          </friction>
+        </surface>
       </collision>
       <inertial>
         <pose>0 0 0 1.5707963267948966 0 0</pose>
@@ -124,6 +134,16 @@
             <length>0.04</length>
           </cylinder>
         </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1.0</mu>    <!-- along one tangent direction -->
+              <mu2>1.0</mu2>  <!-- along the other -->
+              <slip1>0.0</slip1>
+              <slip2>0.0</slip2>
+            </ode>
+          </friction>
+        </surface>
       </collision>
       <inertial>
         <pose>0 0 0 1.5707963267948966 0 0</pose>
@@ -354,7 +374,7 @@
       <sensor name="lidar" type="gpu_lidar">
         <always_on>true</always_on>
         <visualize>true</visualize>
-        <update_rate>5</update_rate>
+        <update_rate>10</update_rate>
         <topic>/scan</topic>
         <gz_frame_id>lidar_link</gz_frame_id>
         <ray>
@@ -368,7 +388,7 @@
           </scan>
           <range>
             <min>0.120000</min>
-            <max>3.5</max>
+            <max>5</max>
             <resolution>0.015000</resolution>
           </range>
           <noise>
